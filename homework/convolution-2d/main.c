@@ -132,7 +132,7 @@ int main(int argc, char *argv[])
     OpenCLConvolution2D(&host_a, &host_b, &host_c);
 
     // Save the image
-    SaveImage(input_file_d, &host_c);
+    SaveImg(input_file_d, &host_c);
 
     // Check the result of the convolution
     CheckImg(&answer, &host_c);
