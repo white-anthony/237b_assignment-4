@@ -22,15 +22,15 @@ solution: ../../helper_lib/helper_lib.a main.c
 
 run: solution
 	./solution Dataset/0/input0.ppm Dataset/0/input1.raw Dataset/0/output.ppm output.ppm
-	# ./solution Dataset/1/input0.raw Dataset/1/input1.raw Dataset/1/output.raw output.raw
-	# ./solution Dataset/2/input0.raw Dataset/2/input1.raw Dataset/2/output.raw output.raw
-	# ./solution Dataset/3/input0.raw Dataset/3/input1.raw Dataset/3/output.raw output.raw
-	# ./solution Dataset/4/input0.raw Dataset/4/input1.raw Dataset/4/output.raw output.raw
-	# ./solution Dataset/5/input0.raw Dataset/5/input1.raw Dataset/5/output.raw output.raw
-	# ./solution Dataset/6/input0.raw Dataset/6/input1.raw Dataset/6/output.raw output.raw
-	# ./solution Dataset/7/input0.raw Dataset/7/input1.raw Dataset/7/output.raw output.raw
-	# ./solution Dataset/8/input0.raw Dataset/8/input1.raw Dataset/8/output.raw output.raw
-	# ./solution Dataset/9/input0.raw Dataset/9/input1.raw Dataset/9/output.raw output.raw
+	./solution Dataset/1/input0.ppm Dataset/1/input1.raw Dataset/1/output.ppm output.ppm
+	./solution Dataset/2/input0.ppm Dataset/2/input1.raw Dataset/2/output.ppm output.ppm
+	./solution Dataset/3/input0.ppm Dataset/3/input1.raw Dataset/3/output.ppm output.ppm
+	./solution Dataset/4/input0.ppm Dataset/4/input1.raw Dataset/4/output.ppm output.ppm
+	./solution Dataset/5/input0.ppm Dataset/5/input1.raw Dataset/5/output.ppm output.ppm
+	./solution Dataset/6/input0.ppm Dataset/6/input1.raw Dataset/6/output.ppm output.ppm
+	./solution Dataset/7/input0.ppm Dataset/7/input1.raw Dataset/7/output.ppm output.ppm
+	./solution Dataset/8/input0.ppm Dataset/8/input1.raw Dataset/8/output.ppm output.ppm
+	./solution Dataset/9/input0.ppm Dataset/9/input1.raw Dataset/9/output.ppm output.ppm
 	
 clean: 
 	rm -f solution
