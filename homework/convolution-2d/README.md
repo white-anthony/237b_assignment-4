@@ -32,7 +32,7 @@ Edit the code in the code tab to perform the following:
 
 * Allocate device memory
 * Copy host memory to device
-* Initialize thread block and kernel grid dimensions
+* Initialize thread block and kernel grid dimensions 16x16
 * Invoke OpenCL kernel
 * Copy results from device to host
 * Deallocate device memory
