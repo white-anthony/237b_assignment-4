@@ -6,17 +6,15 @@
 #include "matrix.h"
 #include "img.h"
 
-#define CHECK_ERR(err, msg)                           \
-    if (err != CL_SUCCESS)                            \
-    {                                                 \
+#define CHECK_ERR(err, msg) \
+    if (err != CL_SUCCESS) { \
         fprintf(stderr, "%s failed: %d\n", msg, err); \
-        exit(EXIT_FAILURE);                           \
+        exit(EXIT_FAILURE); \
     }
 
 #define KERNEL_PATH "kernel.cl"
 
-void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result)
-{
+void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result) {
     // Load external OpenCL kernel code
     char *kernel_source = OclLoadKernel(KERNEL_PATH); // Load kernel source
 
@@ -24,11 +22,11 @@ void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result)
     cl_mem device_a, device_b, device_c;
     cl_int err;
 
-    cl_device_id device_id;    // device ID
-    cl_context context;        // context
-    cl_command_queue queue;    // command queue
-    cl_program program;        // program
-    cl_kernel kernel;          // kernel
+    cl_device_id device_id;  // device ID
+    cl_context context;       // context
+    cl_command_queue queue;  // command queue
+    cl_program program;       // program
+    cl_kernel kernel;         // kernel
 
     // Find platforms and devices
     OclPlatformProp *platforms = NULL;
@@ -94,7 +92,7 @@ void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result)
     CHECK_ERR(err, "clCreateBuffer for device_c");
 
     printf("Buffer sizes: device_a = %zu bytes, device_b = %zu bytes, device_c = %zu bytes\n",
-       size_a, size_b, size_c);
+           size_a, size_b, size_c);
 
     // Copy memory to the GPU here
     err = clEnqueueWriteBuffer(queue, device_a, CL_TRUE, 0, size_a, input0->data, 0, NULL, NULL);
@@ -121,7 +119,7 @@ void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result)
     CHECK_ERR(err, "clSetKernelArg 6");
 
     // Define local and global work sizes
-    size_t local_work_size[2] = {16, 16}; 
+    size_t local_work_size[2] = {16, 16};
     size_t global_work_size[2] = {
         ((result->shape[0] - 1) / local_work_size[0] + 1) * local_work_size[0],
         ((result->shape[1] - 1) / local_work_size[1] + 1) * local_work_size[1]
@@ -161,6 +159,10 @@ void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result)
     clGetEventInfo(read_event, CL_EVENT_COMMAND_EXECUTION_STATUS, sizeof(read_status), &read_status, NULL);
     if (read_status != CL_COMPLETE) {
         fprintf(stderr, "Read buffer failed with status: %d\n", read_status);
+        // Print event status for debugging
+        cl_int kernel_status;
+        clGetEventInfo(kernel_event, CL_EVENT_COMMAND_EXECUTION_STATUS, sizeof(kernel_status), &kernel_status, NULL);
+        fprintf(stderr, "Kernel execution status: %d\n", kernel_status);
     }
 
     // Free the GPU memory here
@@ -176,10 +178,8 @@ void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result)
 }
 
 
-int main(int argc, char *argv[])
-{
-    if (argc != 5)
-    {
+int main(int argc, char *argv[]) {
+    if (argc != 5) {
         fprintf(stderr, "Usage: %s <input_file_0> <input_file_1> <answer_file> <output_file>\n", argv[0]);
         return -1;
     }
@@ -191,7 +191,7 @@ int main(int argc, char *argv[])
 
     // Host input and output vectors and sizes
     Matrix host_a, host_b, host_c, answer;
-    
+
     cl_int err;
 
     err = LoadImg(input_file_a, &host_a);
@@ -203,8 +203,8 @@ int main(int argc, char *argv[])
     err = LoadImg(input_file_c, &answer);
     CHECK_ERR(err, "LoadImg");
 
-    // Update these values for the output rows and cols of the output 
-    int rows, cols; 
+    // Update these values for the output rows and cols of the output
+    int rows, cols;
     int maskSize = 5;
     rows = host_a.shape[0] - maskSize + 1;
     cols = host_a.shape[1] - maskSize + 1;
