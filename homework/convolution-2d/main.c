@@ -22,7 +22,6 @@ void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result)
 
     // Device input and output buffers
     cl_mem device_a, device_b, device_c;
-
     cl_int err;
 
     cl_device_id device_id;    // device ID
@@ -80,7 +79,7 @@ void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result)
     kernel = clCreateKernel(program, "convolution2D", &err);
     CHECK_ERR(err, "clCreateKernel");
 
-    // Allocate GPU memory
+    // Allocate GPU memory here
     size_t size_a = sizeof(float) * input0->shape[0] * input0->shape[1] * IMAGE_CHANNELS;
     size_t size_b = sizeof(float) * input1->shape[0] * input1->shape[1];
     size_t size_c = sizeof(float) * result->shape[0] * result->shape[1] * IMAGE_CHANNELS;
@@ -97,7 +96,7 @@ void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result)
     printf("Buffer sizes: device_a = %zu bytes, device_b = %zu bytes, device_c = %zu bytes\n",
        size_a, size_b, size_c);
 
-    // Copy memory to the GPU
+    // Copy memory to the GPU here
     err = clEnqueueWriteBuffer(queue, device_a, CL_TRUE, 0, size_a, input0->data, 0, NULL, NULL);
     CHECK_ERR(err, "clEnqueueWriteBuffer for device_a");
 
@@ -124,8 +123,8 @@ void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result)
     // Define local and global work sizes
     size_t local_work_size[2] = {16, 16}; 
     size_t global_work_size[2] = {
-        (result->shape[0] + local_work_size[0] - 1) / local_work_size[0] * local_work_size[0],
-        (result->shape[1] + local_work_size[1] - 1) / local_work_size[1] * local_work_size[1]
+        ((result->shape[0] - 1) / local_work_size[0] + 1) * local_work_size[0],
+        ((result->shape[1] - 1) / local_work_size[1] + 1) * local_work_size[1]
     };
 
     printf("Buffer sizes: device_a = %zu, device_b = %zu, device_c = %zu\n",
@@ -133,22 +132,38 @@ void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result)
     printf("Global work size: (%zu, %zu)\n", global_work_size[0], global_work_size[1]);
     printf("Local work size: (%zu, %zu)\n", local_work_size[0], local_work_size[1]);
 
-    // Launch the GPU Kernel
-    err = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+    // Launch the GPU Kernel here
+    cl_event kernel_event;
+    err = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_work_size, local_work_size, 0, NULL, &kernel_event);
     if (err != CL_SUCCESS) {
         fprintf(stderr, "clEnqueueNDRangeKernel failed: %d\n", err);
     }
 
-    // Wait for the command queue to finish
+    // Wait for kernel to complete
     clFinish(queue);
 
-    // Copy the GPU memory back to the CPU
-    err = clEnqueueReadBuffer(queue, device_c, CL_TRUE, 0, size_c, result->data, 0, NULL, NULL);
+    // Check kernel execution status
+    cl_int kernel_status;
+    clGetEventInfo(kernel_event, CL_EVENT_COMMAND_EXECUTION_STATUS, sizeof(kernel_status), &kernel_status, NULL);
+    if (kernel_status != CL_COMPLETE) {
+        fprintf(stderr, "Kernel execution failed with status: %d\n", kernel_status);
+    }
+
+    // Enqueue read buffer
+    cl_event read_event;
+    err = clEnqueueReadBuffer(queue, device_c, CL_TRUE, 0, size_c, result->data, 1, &kernel_event, &read_event);
     if (err != CL_SUCCESS) {
         fprintf(stderr, "clEnqueueReadBuffer failed: %d\n", err);
     }
 
-    // Release the GPU memory
+    // Check read buffer event status
+    cl_int read_status;
+    clGetEventInfo(read_event, CL_EVENT_COMMAND_EXECUTION_STATUS, sizeof(read_status), &read_status, NULL);
+    if (read_status != CL_COMPLETE) {
+        fprintf(stderr, "Read buffer failed with status: %d\n", read_status);
+    }
+
+    // Free the GPU memory here
     clReleaseMemObject(device_a);
     clReleaseMemObject(device_b);
     clReleaseMemObject(device_c);
@@ -159,7 +174,6 @@ void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result)
     clReleaseCommandQueue(queue);
     clReleaseContext(context);
 }
-
 
 
 int main(int argc, char *argv[])
