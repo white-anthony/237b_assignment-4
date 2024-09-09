@@ -1,37 +1,57 @@
-__kernel void convolution2D(
-    __global float *inputData,     
-    __global float *outputData,     
-    __constant float *maskData,    
-    int width,                      
-    int height,                    
-    int maskWidth,                  
-    int imageChannels               
-) {
-    int maskRadius = maskWidth / 2;  
+// Define min and max functions
+inline int min(int a, int b) {
+    return a < b ? a : b;
+}
 
-       int i = get_global_id(1);  // Row index
-    int j = get_global_id(0);  // Column index
+inline int max(int a, int b) {
+    return a > b ? a : b;
+}
 
-        if (i < height && j < width) {
-        // Loop over each color channel
-        for (int k = 0; k < imageChannels; k++) {
-            float accum = 0.0f;
+__kernel void convolution2D(__global float *inputData, __global float *outputData, __constant float *maskData, 
+                             const unsigned int width, const unsigned int height, const unsigned int maskWidth, const unsigned int imageChannels)
+{
+    __local float sharedMem[16 * 16 * 3];  
 
-                       for (int y = -maskRadius; y <= maskRadius; y++) {
-                for (int x = -maskRadius; x <= maskRadius; x++) {
-                    int xOffset = j + x;
-                    int yOffset = i + y;
+    int tx = get_local_id(0);
+    int ty = get_local_id(1);
+    int x = get_global_id(0);
+    int y = get_global_id(1);
+    
+    // Load data into shared memory
+    if (x < width && y < height)
+    {
+        int sharedIndex = (ty * get_local_size(0) + tx) * imageChannels;
+        int globalIndex = (y * width + x) * imageChannels;
 
-                                       if (xOffset >= 0 && xOffset < width && yOffset >= 0 && yOffset < height) {
-                        // Compute the index for the input pixel and mask value
-                        float imagePixel = inputData[(yOffset * width + xOffset) * imageChannels + k];
-                        float maskValue = maskData[(y + maskRadius) * maskWidth + (x + maskRadius)];
-                        accum += imagePixel * maskValue;
-                    }
+        for (int c = 0; c < imageChannels; ++c)
+        {
+            sharedMem[sharedIndex + c] = inputData[globalIndex + c];
+        }
+    }
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // Perform convolution
+    if (x < width && y < height)
+    {
+        float result = 0.0f;
+
+        for (int ky = -2; ky <= 2; ++ky)
+        {
+            for (int kx = -2; kx <= 2; ++kx)
+            {
+                int imgX = min(max(x + kx, 0), width - 1);
+                int imgY = min(max(y + ky, 0), height - 1);
+
+                float maskValue = maskData[(ky + 2) * maskWidth + (kx + 2)];
+                for (int c = 0; c < imageChannels; ++c)
+                {
+                    result += sharedMem[((ty + ky) * get_local_size(0) + (tx + kx)) * imageChannels + c] * maskValue;
                 }
             }
-
-            outputData[(i * width + j) * imageChannels + k] = clamp(accum, 0.0f, 1.0f);
         }
+
+        result = clamp(result, 0.0f, 1.0f);
+        outputData[(y * width + x) * imageChannels] = result;
     }
 }
