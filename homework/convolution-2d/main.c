@@ -206,17 +206,17 @@ int main(int argc, char *argv[]) {
     // Update these values for the output rows and cols of the output
     int rows, cols;
     int maskSize = 5;
-    rows = host_a.shape[0] - maskSize + 1;
-    cols = host_a.shape[1] - maskSize + 1;
+    rows = host_a.shape[0];
+    cols = host_a.shape[1];
 
     // Do not use the results from the answer image
     host_c.shape[0] = rows;
     host_c.shape[1] = cols;
     host_c.data = (float *)malloc(sizeof(float) * host_c.shape[0] * host_c.shape[1] * IMAGE_CHANNELS);
     if (!host_c.data) {
-        fprintf(stderr, "Failed to allocate memory for host_c\n");
-        return -1;
-    }
+    fprintf(stderr, "Failed to allocate memory for host_c\n");
+    return -1;
+}
 
     OpenCLConvolution2D(&host_a, &host_b, &host_c);
 
