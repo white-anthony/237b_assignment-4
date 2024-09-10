@@ -6,27 +6,31 @@
 #include "matrix.h"
 #include "img.h"
 
-#define CHECK_ERR(err, msg) \
-    if (err != CL_SUCCESS) { \
+#define CHECK_ERR(err, msg)                           \
+    if (err != CL_SUCCESS)                            \
+    {                                                 \
         fprintf(stderr, "%s failed: %d\n", msg, err); \
-        exit(EXIT_FAILURE); \
+        exit(EXIT_FAILURE);                           \
     }
 
 #define KERNEL_PATH "kernel.cl"
+#define BLOCK_SIZE 16
 
-void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result) {
+void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result)
+{
     // Load external OpenCL kernel code
     char *kernel_source = OclLoadKernel(KERNEL_PATH); // Load kernel source
 
     // Device input and output buffers
     cl_mem device_a, device_b, device_c;
+
     cl_int err;
 
-    cl_device_id device_id;  // device ID
-    cl_context context;       // context
-    cl_command_queue queue;  // command queue
-    cl_program program;       // program
-    cl_kernel kernel;         // kernel
+    cl_device_id device_id;    // device ID
+    cl_context context;        // context
+    cl_command_queue queue;    // command queue
+    cl_program program;        // program
+    cl_kernel kernel;          // kernel
 
     // Find platforms and devices
     OclPlatformProp *platforms = NULL;
@@ -46,6 +50,25 @@ void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result) {
     queue = clCreateCommandQueueWithProperties(context, device_id, 0, &err);
     CHECK_ERR(err, "clCreateCommandQueueWithProperties");
 
+    // Query and print the maximum work group size
+    size_t maxWorkGroupSize;
+    clGetDeviceInfo(device_id, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), &maxWorkGroupSize, NULL);
+    printf("Max Work Group Size: %zu\n", maxWorkGroupSize);
+
+    // Query and print the local memory size
+    cl_ulong localMemSize;
+    clGetDeviceInfo(device_id, CL_DEVICE_LOCAL_MEM_SIZE, sizeof(cl_ulong), &localMemSize, NULL);
+    printf("Local Memory Size: %lu bytes\n", localMemSize);
+
+    // Assuming input0 and result represent the image dimensions
+    int width = input0->shape[1];  // Width of the image
+    int height = input0->shape[0]; // Height of the image
+
+    // Define global and local work sizes
+    size_t globalWorkSize[2] = {((width + BLOCK_SIZE - 1) / BLOCK_SIZE) * BLOCK_SIZE,
+                                ((height + BLOCK_SIZE - 1) / BLOCK_SIZE) * BLOCK_SIZE};
+    size_t localWorkSize[2] = {BLOCK_SIZE, BLOCK_SIZE};
+
     // Create the program from the source buffer
     program = clCreateProgramWithSource(context, 1, (const char **)&kernel_source, NULL, &err);
     CHECK_ERR(err, "clCreateProgramWithSource");
@@ -53,133 +76,73 @@ void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result) {
     // Build the program executable
     err = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
     if (err != CL_SUCCESS) {
-        // Print the build log if build failed
-        size_t log_size;
-        char *log;
-
-        // Get the build log size
-        clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
-        log = (char *)malloc(log_size);
-        if (log == NULL) {
-            fprintf(stderr, "Failed to allocate memory for build log\n");
-            exit(EXIT_FAILURE);
-        }
-
-        // Get the build log
-        clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
-        fprintf(stderr, "Build log:\n%s\n", log);
-
-        free(log);
-        CHECK_ERR(err, "clBuildProgram");
-    }
+    size_t len;
+    char buffer[2048];
+    clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, &len);
+    fprintf(stderr, "Build Log:\n%s\n", buffer);
+    exit(EXIT_FAILURE);
+}
 
     // Create the compute kernel in the program we wish to run
     kernel = clCreateKernel(program, "convolution2D", &err);
     CHECK_ERR(err, "clCreateKernel");
 
-    // Allocate GPU memory here
-    size_t size_a = sizeof(float) * input0->shape[0] * input0->shape[1] * IMAGE_CHANNELS;
-    size_t size_b = sizeof(float) * input1->shape[0] * input1->shape[1];
-    size_t size_c = sizeof(float) * result->shape[0] * result->shape[1] * IMAGE_CHANNELS;
+    //@@ Allocate GPU memory here
+    device_a = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * input0->shape[0] * input0->shape[1] * IMAGE_CHANNELS, NULL, &err);
+    CHECK_ERR(err, "clCreateBuffer input");
+    
+    device_b = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * input1->shape[0] * input1->shape[1], input1->data, &err);
+    CHECK_ERR(err, "clCreateBuffer mask");
+    
+    device_c = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * result->shape[0] * result->shape[1] * IMAGE_CHANNELS, NULL, &err);
+    CHECK_ERR(err, "clCreateBuffer output");
 
-    device_a = clCreateBuffer(context, CL_MEM_READ_ONLY, size_a, NULL, &err);
-    CHECK_ERR(err, "clCreateBuffer for device_a");
-
-    device_b = clCreateBuffer(context, CL_MEM_READ_ONLY, size_b, NULL, &err);
-    CHECK_ERR(err, "clCreateBuffer for device_b");
-
-    device_c = clCreateBuffer(context, CL_MEM_WRITE_ONLY, size_c, NULL, &err);
-    CHECK_ERR(err, "clCreateBuffer for device_c");
-
-    printf("Buffer sizes: device_a = %zu bytes, device_b = %zu bytes, device_c = %zu bytes\n",
-           size_a, size_b, size_c);
-
-    // Copy memory to the GPU here
-    err = clEnqueueWriteBuffer(queue, device_a, CL_TRUE, 0, size_a, input0->data, 0, NULL, NULL);
-    CHECK_ERR(err, "clEnqueueWriteBuffer for device_a");
-
-    err = clEnqueueWriteBuffer(queue, device_b, CL_TRUE, 0, size_b, input1->data, 0, NULL, NULL);
-    CHECK_ERR(err, "clEnqueueWriteBuffer for device_b");
+    //@@ Copy memory to the GPU here
+    err = clEnqueueWriteBuffer(queue, device_a, CL_TRUE, 0, sizeof(float) * input0->shape[0] * input0->shape[1] * IMAGE_CHANNELS, input0->data, 0, NULL, NULL);
+    CHECK_ERR(err, "clEnqueueWriteBuffer input");
 
     // Set the arguments to our compute kernel
     err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &device_a);
     CHECK_ERR(err, "clSetKernelArg 0");
-    err = clSetKernelArg(kernel, 1, sizeof(cl_mem), &device_c);
+    err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &device_c);
     CHECK_ERR(err, "clSetKernelArg 1");
-    err = clSetKernelArg(kernel, 2, sizeof(cl_mem), &device_b);
+    err |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &device_b);
     CHECK_ERR(err, "clSetKernelArg 2");
-    err = clSetKernelArg(kernel, 3, sizeof(unsigned int), &input0->shape[1]);
+    err |= clSetKernelArg(kernel, 3, sizeof(unsigned int), &input0->shape[1]);
     CHECK_ERR(err, "clSetKernelArg 3");
-    err = clSetKernelArg(kernel, 4, sizeof(unsigned int), &input0->shape[0]);
+    err |= clSetKernelArg(kernel, 4, sizeof(unsigned int), &input0->shape[0]);
     CHECK_ERR(err, "clSetKernelArg 4");
-    err = clSetKernelArg(kernel, 5, sizeof(unsigned int), &input1->shape[0]);
+    err |= clSetKernelArg(kernel, 5, sizeof(unsigned int), &input1->shape[0]);
     CHECK_ERR(err, "clSetKernelArg 5");
     int imageChannels = IMAGE_CHANNELS;
-    err = clSetKernelArg(kernel, 6, sizeof(unsigned int), &imageChannels);
+    err |= clSetKernelArg(kernel, 6, sizeof(unsigned int), &imageChannels);
     CHECK_ERR(err, "clSetKernelArg 6");
 
-    // Define local and global work sizes
-    size_t local_work_size[2] = {16, 16};
-    size_t global_work_size[2] = {
-        ((result->shape[0] - 1) / local_work_size[0] + 1) * local_work_size[0],
-        ((result->shape[1] - 1) / local_work_size[1] + 1) * local_work_size[1]
-    };
+    // @@ define local and global work sizes
 
-    printf("Buffer sizes: device_a = %zu, device_b = %zu, device_c = %zu\n",
-           size_a, size_b, size_c);
-    printf("Global work size: (%zu, %zu)\n", global_work_size[0], global_work_size[1]);
-    printf("Local work size: (%zu, %zu)\n", local_work_size[0], local_work_size[1]);
 
-    // Launch the GPU Kernel here
-    cl_event kernel_event;
-    err = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_work_size, local_work_size, 0, NULL, &kernel_event);
-    if (err != CL_SUCCESS) {
-        fprintf(stderr, "clEnqueueNDRangeKernel failed: %d\n", err);
-    }
+    //@@ Launch the GPU Kernel here
+    err = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, globalWorkSize, localWorkSize, 0, NULL, NULL);
+    CHECK_ERR(err, "clEnqueueNDRangeKernel");
 
-    // Wait for kernel to complete
-    clFinish(queue);
+    //@@ Copy the GPU memory back to the CPU here
+    err = clEnqueueReadBuffer(queue, device_c, CL_TRUE, 0, sizeof(float) * result->shape[0] * result->shape[1] * IMAGE_CHANNELS, result->data, 0, NULL, NULL);
+    CHECK_ERR(err, "clEnqueueReadBuffer");
 
-    // Check kernel execution status
-    cl_int kernel_status;
-    clGetEventInfo(kernel_event, CL_EVENT_COMMAND_EXECUTION_STATUS, sizeof(kernel_status), &kernel_status, NULL);
-    if (kernel_status != CL_COMPLETE) {
-        fprintf(stderr, "Kernel execution failed with status: %d\n", kernel_status);
-    }
-
-    // Enqueue read buffer
-    cl_event read_event;
-    err = clEnqueueReadBuffer(queue, device_c, CL_TRUE, 0, size_c, result->data, 1, &kernel_event, &read_event);
-    if (err != CL_SUCCESS) {
-        fprintf(stderr, "clEnqueueReadBuffer failed: %d\n", err);
-    }
-
-    // Check read buffer event status
-    cl_int read_status;
-    clGetEventInfo(read_event, CL_EVENT_COMMAND_EXECUTION_STATUS, sizeof(read_status), &read_status, NULL);
-    if (read_status != CL_COMPLETE) {
-        fprintf(stderr, "Read buffer failed with status: %d\n", read_status);
-        // Print event status for debugging
-        cl_int kernel_status;
-        clGetEventInfo(kernel_event, CL_EVENT_COMMAND_EXECUTION_STATUS, sizeof(kernel_status), &kernel_status, NULL);
-        fprintf(stderr, "Kernel execution status: %d\n", kernel_status);
-    }
-
-    // Free the GPU memory here
+    //@@ Free the GPU memory here
     clReleaseMemObject(device_a);
     clReleaseMemObject(device_b);
     clReleaseMemObject(device_c);
-
-    // Cleanup
     clReleaseKernel(kernel);
     clReleaseProgram(program);
     clReleaseCommandQueue(queue);
     clReleaseContext(context);
 }
 
-
-int main(int argc, char *argv[]) {
-    if (argc != 5) {
+int main(int argc, char *argv[])
+{
+    if (argc != 5)
+    {
         fprintf(stderr, "Usage: %s <input_file_0> <input_file_1> <answer_file> <output_file>\n", argv[0]);
         return -1;
     }
@@ -191,7 +154,7 @@ int main(int argc, char *argv[]) {
 
     // Host input and output vectors and sizes
     Matrix host_a, host_b, host_c, answer;
-
+    
     cl_int err;
 
     err = LoadImg(input_file_a, &host_a);
@@ -203,20 +166,13 @@ int main(int argc, char *argv[]) {
     err = LoadImg(input_file_c, &answer);
     CHECK_ERR(err, "LoadImg");
 
-    // Update these values for the output rows and cols of the output
-    int rows, cols;
-    int maskSize = 5;
-    rows = host_a.shape[0];
-    cols = host_a.shape[1];
+    int rows = host_a.shape[0]; // height of the output
+    int cols = host_a.shape[1]; // width of the output
 
-    // Do not use the results from the answer image
+    // Allocate the memory for the target.
     host_c.shape[0] = rows;
     host_c.shape[1] = cols;
     host_c.data = (float *)malloc(sizeof(float) * host_c.shape[0] * host_c.shape[1] * IMAGE_CHANNELS);
-    if (!host_c.data) {
-    fprintf(stderr, "Failed to allocate memory for host_c\n");
-    return -1;
-}
 
     OpenCLConvolution2D(&host_a, &host_b, &host_c);
 
@@ -231,6 +187,8 @@ int main(int argc, char *argv[]) {
     free(host_b.data);
     free(host_c.data);
     free(answer.data);
+
+    printf("End of program\n");
 
     return 0;
 }

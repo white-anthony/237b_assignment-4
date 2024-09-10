@@ -1,31 +1,32 @@
-__kernel void convolution2D(__global float *inputData, __global float *outputData,
-                           __constant float *maskData, const unsigned int width,
-                           const unsigned int height, const unsigned int maskWidth,
-                           const unsigned int imageChannels) {
-    const unsigned int maskRadius = maskWidth / 2;
+__kernel void convolution2D(
+    __global float * inputData, __global float * outputData, __constant float * maskData,
+    int width, int height, int maskWidth,  int imageChannels){
+    int maskRadius = maskWidth / 2;
 
-    int x = get_global_id(0);
-    int y = get_global_id(1);
+    int j = get_global_id(0);  
+    int i = get_global_id(1); 
 
-    for (int c = 0; c < imageChannels; ++c) {
-        float accum = 0.0f;
+    if (i < height && j < width) {
+        for (int k = 0; k < imageChannels; k++) {
+            float accum = 0.0f;  
+            for (int y = -maskRadius; y <= maskRadius; y++) {
+                for (int x = -maskRadius; x <= maskRadius; x++) {
+                    // Calculate offsets
+                    int xOffset = j + x;
+                    int yOffset = i + y;
 
-        int startX = max((int)0, (int)(x - maskRadius));
-        int startY = max((int)0, (int)(y - maskRadius));
-        int endX = min((int)width - 1, (int)(x + maskRadius));
-        int endY = min((int)height - 1, (int)(y + maskRadius));
-
-        for (int ky = startY; ky <= endY; ++ky) {
-            for (int kx = startX; kx <= endX; ++kx) {
-                int inputIndex = (ky * width + kx) * imageChannels + c;
-                int maskIndex = (ky - startY + maskRadius) * maskWidth + (kx - startX + maskRadius);
-                float imagePixel = inputData[inputIndex];
-                float maskValue = maskData[maskIndex];
-
-                accum += imagePixel * maskValue;
+                    if (xOffset >= 0 && xOffset < width && yOffset >= 0 && yOffset < height) {
+                        float imagePixel = inputData[(yOffset * width + xOffset) * imageChannels + k];
+                        float maskValue = maskData[(y + maskRadius) * maskWidth + (x + maskRadius)];
+                        
+                        accum += imagePixel * maskValue;
+                    }
+                }
             }
-        }
 
-        outputData[(y * width + x) * imageChannels + c] = clamp(accum, 0.0f, 1.0f);
+            accum = clamp(accum, 0.0f, 1.0f);
+
+            outputData[(i * width + j) * imageChannels + k] = accum;
+        }
     }
 }
