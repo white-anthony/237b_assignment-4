@@ -118,8 +118,6 @@ void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result)
     err |= clSetKernelArg(kernel, 6, sizeof(unsigned int), &imageChannels);
     CHECK_ERR(err, "clSetKernelArg 6");
 
-    // @@ define local and global work sizes
-
 
     //@@ Launch the GPU Kernel here
     err = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, globalWorkSize, localWorkSize, 0, NULL, NULL);
